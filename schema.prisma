@@ -1,0 +1,253 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Tenant {
+  id          String    @id @default(cuid())
+  name        String
+  gstNumber   String?
+  state       String?
+  plan        String    @default("starter")
+  maxProjects Int       @default(20)
+  createdAt   DateTime  @default(now())
+  users       User[]
+  projects    Project[]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  email     String   @unique
+  password  String
+  mobile    String?
+  role      Role     @default(FIELD_EXECUTIVE)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  assignedProjects  Project[]         @relation("AssignedProjects")
+  createdProjects   Project[]         @relation("CreatedProjects")
+  stageHistory      StageHistory[]
+  completionProofs  StageCompletion[]
+  uploadedDocs      Document[]
+  uploadedPhotos    Photo[]
+  notifications     Notification[]
+  projectAssignments ProjectAssignment[]
+
+  @@index([tenantId])
+}
+
+enum Role {
+  OWNER
+  BACKOFFICE
+  FIELD_EXECUTIVE
+}
+
+model Project {
+  id          String  @id @default(cuid())
+  tenantId    String
+  tenant      Tenant  @relation(fields: [tenantId], references: [id])
+  projectCode String
+
+  // Customer
+  customerName String
+  mobile       String?
+  email        String?
+  address      String?
+  city         String?
+  pincode      String?
+
+  // Electricity
+  consumerNumber String?
+  sanctionedLoad Float?
+  tariffCategory String?
+
+  // Solar System
+  systemSizeKw     Float?
+  panelBrand       String?
+  inverterBrand    String?
+  panelQuantity    Int?
+  installationDate DateTime?
+
+  // Loan
+  loanRequired Boolean @default(false)
+  bankName     String?
+  loanStatus   String?
+  loanAmount   Float?
+
+  // DISCOM
+  feasibilityStatus   String?
+  feasibilityDate     DateTime?
+  netMeterAppStatus   String?
+  inspectionStatus    String?
+  netMeterInstallDate DateTime?
+
+  // Workflow
+  currentStage     Int     @default(1)
+  currentStageName String  @default("Lead Confirmed")
+  isDelayed        Boolean @default(false)
+  delayDays        Int     @default(0)
+
+  assignedToId String?
+  assignedTo   User?   @relation("AssignedProjects", fields: [assignedToId], references: [id])
+  createdById  String
+  createdBy    User    @relation("CreatedProjects", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stageHistory       StageHistory[]
+  stageCompletions   StageCompletion[]
+  documents          Document[]
+  photos             Photo[]
+  notifications      Notification[]
+  delayAlerts        DelayAlert[]
+  assignments        ProjectAssignment[]
+
+  @@index([tenantId])
+  @@index([tenantId, currentStage])
+  @@index([tenantId, isDelayed])
+  @@index([tenantId, city])
+}
+
+model ProjectAssignment {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id])
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  assignedRole   String
+  assignmentDate DateTime @default(now())
+  assignedById   String
+  tenantId       String
+
+  @@index([tenantId, projectId])
+}
+
+model WorkflowStage {
+  id               Int    @id
+  stageName        String
+  stageOrder       Int
+  expectedDays     Int
+  stageCategory    String
+}
+
+model StageHistory {
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id])
+  tenantId    String
+  stageId     Int
+  stageName   String
+  enteredAt   DateTime  @default(now())
+  exitedAt    DateTime?
+  durationDays Int?
+  updatedById String
+  updatedBy   User      @relation(fields: [updatedById], references: [id])
+  notes       String?
+
+  @@index([tenantId, projectId])
+}
+
+model StageCompletion {
+  id                String   @id @default(cuid())
+  tenantId          String
+  projectId         String
+  project           Project  @relation(fields: [projectId], references: [id])
+  stageId           Int
+  stageName         String
+  completedById     String
+  completedBy       User     @relation(fields: [completedById], references: [id])
+  completionDate    DateTime @default(now())
+  completionTimestamp DateTime @default(now())
+  optionalNote      String?
+  proofUploaded     Boolean  @default(false)
+
+  @@index([tenantId, projectId])
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id])
+  tenantId     String
+  docType      String
+  fileName     String
+  storagePath  String
+  fileSize     Int?
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  uploadedAt   DateTime @default(now())
+
+  @@index([tenantId, projectId])
+}
+
+model Photo {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id])
+  tenantId      String
+  photoCategory String
+  photoTag      String?
+  storagePath   String
+  fileName      String
+  fileSize      Int?
+  caption       String?
+  gpsLat        Float?
+  gpsLng        Float?
+  uploadedById  String
+  uploadedBy    User     @relation(fields: [uploadedById], references: [id])
+  uploadedAt    DateTime @default(now())
+  stageId       Int?
+
+  @@index([tenantId, projectId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  tenantId  String
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, userId])
+}
+
+model DelayAlert {
+  id          String    @id @default(cuid())
+  tenantId    String
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id])
+  stageId     Int
+  stageName   String
+  daysOverdue Int
+  detectedAt  DateTime  @default(now())
+  resolvedAt  DateTime?
+  isActive    Boolean   @default(true)
+
+  @@index([tenantId, isActive])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  tenantId       String
+  userId         String
+  projectId      String?
+  actionPerformed String
+  timestamp      DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, projectId])
+}
